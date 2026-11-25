@@ -1,9 +1,10 @@
-import { useLocation, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { Link } from "../components/TransitionLink.jsx";
 import { useEffect, useState } from "react";
 import { getRegistrationsForUser, getTournamentParticipantCount, registerTournament, subscribeToData } from "../data/gameArenaData.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { getAllTournaments, getTournamentById, getTournamentRegistrationState, getTournamentStatus, subscribeToTournamentData } from "../data/tournaments.js";
+import TournamentRegistrationModal from "../components/TournamentRegistrationModal.jsx";
 
 const gameClasses = { valorant: "gv", bgmi: "gb", cs2: "gc" };
 const statusNames = { upcoming: "Upcoming", "registration-closed":"Registration closed", draft:"Draft", cancelled:"Cancelled", ongoing: "Ongoing", completed: "Completed" };
@@ -12,11 +13,11 @@ const dateTime = (value) => new Intl.DateTimeFormat("en-IN", { dateStyle: "mediu
 
 export default function TournamentDetails() {
   const { id } = useParams();
-  const location = useLocation();
   const { user, status: authStatus } = useAuth();
   const [tournament, setTournament] = useState(() => getTournamentById(id));
   const [registered, setRegistered] = useState(false);
   const [registering, setRegistering] = useState(false);
+  const [registrationModalOpen, setRegistrationModalOpen] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const authReady = authStatus !== "loading";
   const registrationRestricted = user?.status === "restricted";
@@ -43,7 +44,7 @@ export default function TournamentDetails() {
     return subscribeToData(refresh);
   }, [id, tournament, user]);
 
-  async function handleRegister() {
+  function handleRegister() {
     if (!tournament || !registrationOpen || registering) return;
     if (!authReady) {
       setFeedback({ message: "Checking your account session. Please try again in a moment." });
@@ -53,26 +54,41 @@ export default function TournamentDetails() {
       setFeedback({ message: "Log in to register for this tournament.", to: "/login", link: "Log in" });
       return;
     }
-    if (user.status === "restricted") { setFeedback({ message: "Your account is restricted. Tournament registration is unavailable." }); return; }
+    if (user.status === "restricted" || user.status === "banned") {
+      setFeedback({ message: "Your account is not eligible for tournament registration." });
+      return;
+    }
+    setFeedback(null);
+    setRegistrationModalOpen(true);
+  }
+
+  async function handleRegistrationSubmit(details) {
+    if (!authReady) return { ok: false, message: "Checking your account session. Please try again in a moment." };
+    if (!user) return { ok: false, message: "Log in to register for this tournament." };
     setRegistering(true);
-    let result;
-    try { result = await registerTournament(tournament, user.id); }
-    catch { result = { ok: false, reason: "storage-unavailable" }; }
-    finally { setRegistering(false); }
-    if (result.ok) {
-      setRegistered(true);
-      setFeedback({ message: "Registration successful.", to: "/activities", link: "View activities" });
-    } else if (result.reason === "duplicate") {
-      setRegistered(true);
-      setFeedback({ message: "This account is already registered for this tournament." });
-    } else if (result.reason === "registration-closed") {
-      setFeedback({ message: "Registration is closed for this tournament." });
-    } else if (result.reason === "tournament-full") {
-      setFeedback({ message: "This tournament has reached maximum capacity." });
-    } else if (result.reason === "account-restricted") {
-      setFeedback({ message: "Your account is restricted. Tournament registration is unavailable." });
-    } else {
-      setFeedback({ message: "Registration could not be saved in this browser. Enable local storage and try again.", error: true });
+    try {
+      const result = await registerTournament(tournament, user.id, details);
+      if (result.ok) {
+        setRegistered(true);
+        setRegistrationModalOpen(false);
+        setFeedback({ message: "Registration successful.", to: "/activities", link: "View activities" });
+        return result;
+      }
+
+      if (result.reason === "duplicate") {
+        setRegistered(true);
+        return { ok: false, message: "This account is already registered for this tournament." };
+      }
+      if (result.reason === "login-required") return { ok: false, message: "Log in to register for this tournament." };
+      if (result.reason === "registration-closed") return { ok: false, message: "Registration is closed for this tournament." };
+      if (result.reason === "tournament-full") return { ok: false, message: "This tournament has reached maximum capacity." };
+      if (result.reason === "account-restricted") return { ok: false, message: "Your account is restricted. Tournament registration is unavailable." };
+      if (result.reason === "account-unavailable") return { ok: false, message: "Your account is not eligible for tournament registration." };
+      return { ok: false, message: "Registration could not be saved in this browser. Enable local storage and try again." };
+    } catch (error) {
+      return { ok: false, message: error?.message || "Registration could not be saved in this browser. Enable local storage and try again." };
+    } finally {
+      setRegistering(false);
     }
   }
 
@@ -93,7 +109,7 @@ export default function TournamentDetails() {
     ? `${participantCount} / ${tournament.participants.capacity}`
     : `${participantCount}`;
   const spotsLeft = tournament.participants.capacity
-    ? Math.max(0, tournament.participants.capacity - tournament.participants.registered)
+    ? Math.max(0, tournament.participants.capacity - participantCount)
     : null;
 
   return (
@@ -156,7 +172,7 @@ export default function TournamentDetails() {
                 {registering ? "Registering…" : !authReady ? "Checking session…" : registrationRestricted ? "Registration unavailable" : registered ? "Already registered" : registrationOpen ? "Register your team" : registrationState.label}
               </button>
               {registrationRestricted && <p role="status" className="registration-feedback">Your account is restricted. Tournament registration is unavailable.</p>}
-              <p id="registration-feedback" className={`registration-feedback${feedback?.error ? " registration-feedback-error" : ""}`} role="status" aria-live="polite">
+              <p id="registration-feedback" className={`registration-feedback${feedback?.error ? " registration-feedback-error" : ""}`} role="status" aria-live="polite" tabIndex={feedback ? -1 : undefined}>
                 {feedback && <>{feedback.message}{feedback.link && <> <Link to={feedback.to}>{feedback.link}</Link></>}</>}
               </p>
               {status === "upcoming" && <p style={{ marginTop: "14px", fontSize: ".9rem" }}>Already have an account? <Link to="/login" style={{ textDecoration: "underline" }}>Log in</Link></p>}
@@ -164,6 +180,13 @@ export default function TournamentDetails() {
           </div>
         </section>
       </div>
+      {registrationModalOpen && <TournamentRegistrationModal
+        tournament={tournament}
+        user={user}
+        submitting={registering}
+        onClose={() => setRegistrationModalOpen(false)}
+        onSubmit={handleRegistrationSubmit}
+      />}
     </main>
   );
 }

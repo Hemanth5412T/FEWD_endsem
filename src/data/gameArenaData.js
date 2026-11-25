@@ -1,5 +1,6 @@
 import { getAllTournaments, getTournamentById, getTournamentRegistrationState } from "./tournaments.js";
-import { getAccountById } from "./accountStore.js";
+import { getAccountById, readSessionUserId } from "./accountStore.js";
+import { validateTournamentRegistrationDetails } from "./tournamentRegistrationForm.js";
 
 const REGISTRATIONS_KEY = "gameArena.tournamentRegistrations";
 
@@ -43,30 +44,38 @@ export function isUnregistrationOpen(tournamentStart, now = new Date()) {
   return Boolean(deadline) && Number.isFinite(nowTime) && nowTime < deadline.getTime();
 }
 
-export async function registerTournament(tournament, userId) {
-  if (!userId) return { ok: false, reason: "login-required" };
+export async function registerTournament(tournament, userId, details) {
+  if (!userId || readSessionUserId() !== userId) return { ok: false, reason: "login-required" };
   if (!tournament?.id || !tournament?.name) return { ok: false, reason: "invalid-tournament" };
   const canonicalTournament = (await getAllTournaments()).find((item) => item.id === tournament.id);
   if (!canonicalTournament) return { ok: false, reason: "invalid-tournament" };
-  if (!getTournamentRegistrationState(canonicalTournament, new Date(), getTournamentParticipantCount(canonicalTournament)).available) {
-    const state = getTournamentRegistrationState(canonicalTournament, new Date(), getTournamentParticipantCount(canonicalTournament));
-    return { ok: false, reason: state.status === "full" ? "tournament-full" : "registration-closed" };
-  }
   const account = await getAccountById(userId);
   if (!account || account.status === "banned") return { ok: false, reason: "account-unavailable" };
   if (account.status === "restricted") return { ok: false, reason: "account-restricted" };
+
   try {
-    const registrations = readJSON(REGISTRATIONS_KEY, []);
-    const list = Array.isArray(registrations) ? registrations : [];
-    const currentParticipants = Number(canonicalTournament.participants?.registered || 0) + list.filter((item) => item?.tournamentId === canonicalTournament.id && item.registrationStatus === "Registered").length;
-    if (!getTournamentRegistrationState(canonicalTournament, new Date(), currentParticipants).available) return { ok: false, reason: currentParticipants >= Number(canonicalTournament.participants?.capacity) ? "tournament-full" : "registration-closed" };
+    const stored = localStorage.getItem(REGISTRATIONS_KEY);
+    const list = stored === null ? [] : JSON.parse(stored);
+    if (!Array.isArray(list)) return { ok: false, reason: "storage-unavailable" };
+
     const existing = list.find((item) => item.userId === userId && item.tournamentId === canonicalTournament.id);
     if (existing) return { ok: false, reason: "duplicate", registration: existing };
+    const { normalized, errors } = validateTournamentRegistrationDetails(canonicalTournament, details);
+    if (Object.keys(errors).length) return { ok: false, reason: "invalid-details", errors };
+    const currentParticipants = Number(canonicalTournament.participants?.registered || 0) + list.filter((item) => item?.tournamentId === canonicalTournament.id && item.registrationStatus === "Registered").length;
+    const registrationState = getTournamentRegistrationState(canonicalTournament, new Date(), currentParticipants);
+    if (!registrationState.available) return { ok: false, reason: registrationState.status === "full" ? "tournament-full" : "registration-closed" };
+
     const registration = {
+      id: crypto.randomUUID(),
       userId,
       tournamentId: canonicalTournament.id,
       name: canonicalTournament.name,
       game: canonicalTournament.game,
+      roster: normalized.roster,
+      contactEmail: normalized.contactEmail,
+      contactPhone: normalized.contactPhone,
+      country: normalized.country,
       registeredAt: new Date().toISOString(),
       tournamentStart: canonicalTournament.start || "",
       tournamentEnd: canonicalTournament.end || "",
