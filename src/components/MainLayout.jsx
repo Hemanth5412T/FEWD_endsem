@@ -24,7 +24,7 @@ export function MainNav() {
   const [logoutError, setLogoutError] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const logoutStarted = useRef(false);
-  const current = pathname.startsWith("/community") ? "/community" : pathname.startsWith("/tournament/") ? "/search-events" : pathname;
+  const current = pathname.startsWith("/community") || pathname.startsWith("/player/") ? "/community" : pathname.startsWith("/tournament/") ? "/search-events" : pathname;
   useEffect(() => { setMobileMenuOpen(false); }, [pathname]);
   const closeMenu = () => setMobileMenuOpen(false);
 

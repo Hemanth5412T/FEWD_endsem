@@ -126,6 +126,52 @@
 .community-feed-title > span { color: #6f7280; font-size: .85rem; }
 .community-feed-toolbar .community-create-button { flex: none; }
 .community-profile-meta { display: flex; align-items: center; gap: 12px; color: #666d7c; font-size: .86rem; }
+.player-follow-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 12px 0; color: var(--n); }
+.player-follow-count { padding: 5px 0; border: 0; background: transparent; color: inherit; font: 500 .9rem var(--s); cursor: pointer; }
+.player-follow-count:hover { text-decoration: underline; text-underline-offset: 3px; }
+.player-follow-count b { font-weight: 800; }
+.player-follow-action { position: relative; display: inline-flex; }
+.player-follow-button { min-height: 38px; padding: 8px 14px; white-space: nowrap; }
+.player-follow-login { display: inline-flex; align-items: center; min-height: 38px; padding: 8px 14px; white-space: nowrap; }
+.player-follow-menu { position: absolute; top: calc(100% + 5px); right: 0; z-index: 5; min-width: 120px; padding: 5px; border: 1px solid rgb(25 42 86 / 14%); border-radius: 9px; background: var(--w); box-shadow: 0 8px 24px rgb(25 42 86 / 15%); }
+.player-follow-menu button { width: 100%; padding: 8px 10px; border: 0; border-radius: 6px; background: transparent; color: #8c4145; font: 700 .85rem var(--s); text-align: left; cursor: pointer; }
+.player-follow-menu button:hover { background: #f8eeee; }
+.player-follow-error { margin: 6px 0; color: #9a2f32; font-size: .84rem; font-weight: 600; }
+.player-follow-backdrop { position: fixed; inset: 0; z-index: 250; display: grid; place-items: center; padding: 16px; background: rgb(18 25 43 / 55%); }
+.player-follow-dialog { width: min(460px, 100%); max-height: min(80dvh, 640px); overflow-y: auto; padding: 20px; border: 1px solid rgb(25 42 86 / 12%); border-radius: 16px; background: var(--w); color: var(--n); box-shadow: 0 20px 60px rgb(12 19 36 / 28%); }
+.player-follow-dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid rgb(25 42 86 / 10%); }
+.player-follow-dialog-header h2 { margin: 0; font: 800 1.4rem var(--d); }
+.player-follow-close { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid rgb(25 42 86 / 14%); border-radius: 9px; background: var(--w); color: var(--n); font: 700 1.35rem/1 var(--s); cursor: pointer; }
+.player-follow-list { display: grid; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
+.player-follow-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid rgb(25 42 86 / 8%); }
+.player-follow-person { display: flex; min-width: 0; align-items: center; gap: 10px; color: var(--n); text-decoration: none; }
+.player-follow-person > span:last-child { display: grid; min-width: 0; gap: 2px; }
+.player-follow-person b,
+.player-follow-person small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.player-follow-person small { color: #6f7280; font-size: .8rem; }
+.player-follow-empty { margin: 18px 0 4px; color: #6f7280; text-align: center; }
+.player-discovery { display: grid; gap: 12px; margin: 22px 0; padding: 18px; }
+.player-discovery-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.player-discovery-heading .eyebrow { margin: 0 0 4px; color: #747987; font-size: .66rem; font-weight: 800; letter-spacing: .12em; }
+.player-discovery-heading h2,
+.community-player-achievements h2 { margin: 0; font: 800 1.35rem var(--d); }
+.player-search-field input { width: 100%; min-height: 44px; padding: 10px 13px; border: 1px solid rgb(25 42 86 / 20%); border-radius: 9px; background: var(--w); color: var(--n); font: 500 .95rem var(--s); }
+.player-search-field input:focus { outline: 3px solid rgb(237 166 163 / 45%); border-color: var(--n); }
+.player-discovery-note { margin: 2px 0; color: #6f7280; font-size: .88rem; }
+.player-search-results { display: grid; gap: 8px; }
+.player-search-result { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 10px 0; border-top: 1px solid rgb(25 42 86 / 8%); }
+.player-search-result .player-follow-person { flex: 1 1 190px; }
+.player-search-counts { color: #666d7c; font-size: .8rem; }
+.player-search-counts b { color: var(--n); }
+.community-player-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.community-player-stats > div { display: grid; gap: 3px; padding: 14px; border-radius: 11px; background: var(--w); text-align: center; }
+.community-player-stats b { color: var(--n); font: 800 1.5rem var(--d); }
+.community-player-stats span { color: #6f7280; font-size: .76rem; }
+.community-player-achievements { padding: 16px; border: 1px solid rgb(25 42 86 / 10%); border-radius: 14px; background: var(--w); }
+.community-player-achievements ul { display: grid; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
+.community-player-achievements li { display: grid; gap: 3px; padding: 10px 12px; border-radius: 9px; background: #f8f5f0; }
+.community-player-achievements li span,
+.community-player-achievements > p { margin: 0; color: #6f7280; font-size: .84rem; }
 .community-post {
     overflow: hidden;
     padding: 20px 22px 0;
@@ -371,6 +417,9 @@
     .community-feed-toolbar { align-items: center; flex-direction: row; gap: 8px; }
     .community-feed-toolbar h2 { font-size: 1.55rem; }
     .community-feed-toolbar .community-create-button { padding-inline: 10px; }
+    .community-player-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .player-search-result { align-items: flex-start; }
+    .player-search-counts { flex: 1 1 100%; padding-left: 42px; }
     .community-author-meta { font-size: .72rem; }
     .community-modal-backdrop { align-items: end; padding: 0; }
     .community-modal { width: 100%; max-height: 94dvh; padding: 24px 18px; border-radius: 18px 18px 0 0; }

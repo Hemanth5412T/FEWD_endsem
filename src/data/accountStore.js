@@ -1,7 +1,8 @@
 const DB_NAME = "gameArenaAccounts";
 const STORE = "accounts";
-export const ACCOUNT_DB_VERSION = 6;
+export const ACCOUNT_DB_VERSION = 8;
 const ACCOUNT_DATA_VERSION = 4;
+export const PLAYER_FOLLOWS_STORE = "PlayerFollows";
 export const ADMIN_STORES = { tournaments: "managedTournaments", requests: "promotionRequests", audit: "adminAudit" };
 export const COMMUNITY_STORES = {
   posts: "CommunityPosts",
@@ -124,6 +125,12 @@ function openDatabase() {
         moderation.createIndex("postId", "postId");
         moderation.createIndex("actorId", "actorId");
         moderation.createIndex("createdAt", "createdAt");
+      }
+      if (!db.objectStoreNames.contains(PLAYER_FOLLOWS_STORE)) {
+        const follows = db.createObjectStore(PLAYER_FOLLOWS_STORE, { keyPath: "followId" });
+        follows.createIndex("followerId", "followerId");
+        follows.createIndex("followingId", "followingId");
+        follows.createIndex("followerFollowing", ["followerId", "followingId"], { unique: true });
       }
       if (event.oldVersion < ACCOUNT_DATA_VERSION) {
         const cursor = store.openCursor();
@@ -259,6 +266,211 @@ export async function getStoredAccounts() {
   const rows = await requestValue(db.transaction(STORE, "readonly").objectStore(STORE).getAll());
   return rows.map(safeAccount);
 }
+
+function emptyFollowSummary() {
+  return { followers: 0, following: 0, isFollowing: false };
+}
+
+export async function getPlayerFollowSummary(profileId, viewerId = null) {
+  if (!profileId) return emptyFollowSummary();
+  const db = await openDatabase();
+  const follows = db.transaction(PLAYER_FOLLOWS_STORE, "readonly").objectStore(PLAYER_FOLLOWS_STORE);
+  const requests = [
+    requestValue(follows.index("followingId").count(IDBKeyRange.only(profileId))),
+    requestValue(follows.index("followerId").count(IDBKeyRange.only(profileId))),
+    viewerId && viewerId !== profileId
+      ? requestValue(follows.index("followerFollowing").get([viewerId, profileId]))
+      : Promise.resolve(null),
+  ];
+  const [followers, following, relationship] = await Promise.all(requests);
+  return { followers, following, isFollowing: Boolean(relationship) };
+}
+
+function followProfile(account, isFollowing) {
+  const displayName = String(account.displayName || account.fullName || account.username || "Player");
+  return {
+    userId: account.id,
+    username: String(account.username || "Player"),
+    displayName,
+    avatarInitials: displayName.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "P",
+    isFollowing,
+  };
+}
+
+export async function listPlayerFollowProfiles(profileId, direction, viewerId = null) {
+  if (!profileId || !["followers", "following"].includes(direction)) return [];
+  const db = await openDatabase();
+  const transaction = db.transaction([STORE, PLAYER_FOLLOWS_STORE], "readonly");
+  const follows = transaction.objectStore(PLAYER_FOLLOWS_STORE);
+  const accountsRequest = transaction.objectStore(STORE).getAll();
+  const targetIndex = direction === "followers" ? "followingId" : "followerId";
+  const targetRelationshipsRequest = follows.index(targetIndex).getAll(IDBKeyRange.only(profileId));
+  const viewerRelationshipsRequest = viewerId
+    ? follows.index("followerId").getAll(IDBKeyRange.only(viewerId))
+    : null;
+  const [accounts, targetRelationships, viewerRelationships] = await Promise.all([
+    requestValue(accountsRequest),
+    requestValue(targetRelationshipsRequest),
+    viewerRelationshipsRequest ? requestValue(viewerRelationshipsRequest) : Promise.resolve([]),
+  ]);
+  const accountsById = new Map(accounts.map((account) => [account.id, account]));
+  const viewerFollowing = new Set(viewerRelationships.map((relationship) => relationship.followingId));
+  return targetRelationships
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+    .map((relationship) => {
+      const accountId = direction === "followers" ? relationship.followerId : relationship.followingId;
+      const account = accountsById.get(accountId);
+      if (!account || account.status === "banned" || account.isActive === false) return null;
+      return followProfile(account, viewerFollowing.has(accountId));
+    })
+    .filter(Boolean);
+}
+
+export async function togglePlayerFollow(followerId, followingId) {
+  if (!followerId || !followingId) throw new Error("A signed-in player and profile are required to follow.");
+  if (readSessionUserId() !== followerId) throw new Error("You can only manage follows for your signed-in account.");
+  if (followerId === followingId) throw new Error("You cannot follow your own profile.");
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE, PLAYER_FOLLOWS_STORE], "readwrite");
+    const accounts = transaction.objectStore(STORE);
+    const follows = transaction.objectStore(PLAYER_FOLLOWS_STORE);
+    let result;
+    let failure;
+    let ready = 0;
+    let follower;
+    let target;
+    let relationship;
+    const abort = (message) => {
+      failure = new Error(message);
+      transaction.abort();
+    };
+    const applyChange = () => {
+      if (++ready !== 3) return;
+      if (!follower || follower.status !== "active" || follower.isActive === false) {
+        abort("An active account is required to manage follows.");
+        return;
+      }
+      if (!target || target.status === "banned" || target.isActive === false) {
+        abort("This player profile is unavailable.");
+        return;
+      }
+      if (relationship) {
+        follows.delete(relationship.followId);
+        result = false;
+      } else {
+        follows.add({
+          followId: crypto.randomUUID(),
+          followerId,
+          followingId,
+          createdAt: new Date().toISOString(),
+        });
+        result = true;
+      }
+    };
+    const followerRequest = accounts.get(followerId);
+    followerRequest.onsuccess = () => { follower = followerRequest.result; applyChange(); };
+    const targetRequest = accounts.get(followingId);
+    targetRequest.onsuccess = () => { target = targetRequest.result; applyChange(); };
+    const relationshipRequest = follows.index("followerFollowing").get([followerId, followingId]);
+    relationshipRequest.onsuccess = () => { relationship = relationshipRequest.result; applyChange(); };
+    transaction.oncomplete = () => resolve(result);
+    transaction.onabort = () => reject(failure || transaction.error || new Error("The follow change could not be saved."));
+    transaction.onerror = () => reject(failure || transaction.error || new Error("The follow change could not be saved."));
+  });
+}
+
+function requireSessionActor(userId, relationship) {
+  if (!userId || readSessionUserId() !== userId) {
+    throw new Error(`You can only manage ${relationship} for your signed-in account.`);
+  }
+}
+
+function isActivePlayer(account) {
+  return Boolean(account && account.status === "active" && account.isActive !== false);
+}
+
+function isPublicPlayer(account) {
+  return Boolean(account && account.status !== "banned" && account.isActive !== false);
+}
+
+function playerDisplayName(account) {
+  return String(account.displayName || account.fullName || account.username || "Player").trim();
+}
+
+function initialsForPlayer(displayName) {
+  return displayName.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "P";
+}
+
+function publicPlayerDetails(account) {
+  const safe = safeAccount(account);
+  const displayName = playerDisplayName(account);
+  return {
+    userId: account.id,
+    username: String(account.username || "Player"),
+    displayName,
+    avatarInitials: initialsForPlayer(displayName),
+    bio: String(account.bio || ""),
+    game: String(account.preferredGame || ""),
+    createdAt: account.createdAt || null,
+    matchesPlayed: safe.matchesPlayed,
+    wins: safe.wins,
+    losses: safe.losses,
+    draws: safe.draws,
+    winRate: safe.winRate,
+    tournamentsPlayed: safe.tournamentsPlayed,
+    achievements: safe.achievements,
+  };
+}
+
+export async function getPublicPlayerProfile(userId) {
+  if (!userId) return null;
+  const account = await getStoredAccountById(userId);
+  return isPublicPlayer(account) ? publicPlayerDetails(account) : null;
+}
+
+export async function searchRegisteredPlayers(query, currentUserId, limit = 20) {
+  requireSessionActor(currentUserId, "player search");
+  const normalizedQuery = normalize(query);
+  if (!normalizedQuery) return [];
+  const db = await openDatabase();
+  const transaction = db.transaction([STORE, PLAYER_FOLLOWS_STORE], "readonly");
+  const accountsRequest = transaction.objectStore(STORE).getAll();
+  const followsRequest = transaction.objectStore(PLAYER_FOLLOWS_STORE).getAll();
+  const [accounts, follows] = await Promise.all([requestValue(accountsRequest), requestValue(followsRequest)]);
+  const currentUser = accounts.find((account) => account.id === currentUserId);
+  if (!isActivePlayer(currentUser)) throw new Error("An active account is required to search for players.");
+  const resultLimit = Number.isFinite(limit) ? Math.min(50, Math.max(1, Math.floor(limit))) : 20;
+  const matches = accounts
+    .filter((account) => {
+      if (account.id === currentUserId || !isPublicPlayer(account)) return false;
+      return normalize(account.username).includes(normalizedQuery)
+        || normalize(playerDisplayName(account)).includes(normalizedQuery);
+    })
+    .sort((a, b) => playerDisplayName(a).localeCompare(playerDisplayName(b)))
+    .slice(0, resultLimit);
+  const matchIds = new Set(matches.map((account) => account.id));
+  const followers = new Map();
+  const following = new Map();
+  for (const relation of follows) {
+    if (matchIds.has(relation.followingId)) followers.set(relation.followingId, (followers.get(relation.followingId) || 0) + 1);
+    if (matchIds.has(relation.followerId)) following.set(relation.followerId, (following.get(relation.followerId) || 0) + 1);
+  }
+  return matches.map((account) => ({
+    ...publicPlayerDetails(account),
+    followers: followers.get(account.id) || 0,
+    following: following.get(account.id) || 0,
+  }));
+}
+
+export async function listPublicPlayers(game = "") {
+  const accounts = await getStoredAccounts();
+  return accounts
+    .filter((account) => isPublicPlayer(account) && (!game || account.preferredGame === game))
+    .map((account) => publicPlayerDetails(account))
+    .sort((a, b) => b.wins - a.wins || b.winRate - a.winRate || b.matchesPlayed - a.matchesPlayed || a.username.localeCompare(b.username));
+}
+
 export async function updateStoredAccount(id, updater) {
   const db = await openDatabase();
   return new Promise((resolve, reject) => {

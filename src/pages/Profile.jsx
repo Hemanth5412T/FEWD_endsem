@@ -1,6 +1,7 @@
 import { Link } from "../components/TransitionLink.jsx";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCompletedMatchHistory, getCompletedTournamentHistory, getTournamentsPlayed } from "../data/accountStore.js";
+import PlayerFollowSummary from "../components/PlayerFollowSummary.jsx";
 import { getTournamentById } from "../data/tournaments.js";
 import { useAuth } from "../context/AuthContext.jsx";
 
@@ -58,6 +59,7 @@ export default function Profile() {
           <button ref={editButtonRef} className="btn p" type="button" disabled={!user} title={!user ? "Log in to edit your profile." : undefined} onClick={() => { setProfileMessage(""); setEditing(true); }}>Edit profile</button>
         </div>
         {profileMessage && <p className="profile-update-message" role="status">{profileMessage}</p>}
+        {user && <PlayerFollowSummary profileId={user.id} viewer={user} />}
       </section>
       <section style={{padding: "24px 0"}}>
         <div className="g profile-stats">

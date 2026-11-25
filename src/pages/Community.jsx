@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Link } from "../components/TransitionLink.jsx";
+import PlayerDiscovery from "../components/PlayerDiscovery.jsx";
+import PlayerFollowSummary from "../components/PlayerFollowSummary.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import {
   COMMUNITY_MAX_COMMENT_LENGTH,
@@ -278,6 +280,8 @@ function CommunityFeed({ profileId }) {
         </div>
       </header>
 
+      {!profileId && <PlayerDiscovery viewer={user} />}
+
       {!profileId && <nav className="community-filters" aria-label="Community feed filters">
         {filters.map(([value, label]) => <button
           key={value}
@@ -299,6 +303,22 @@ function CommunityFeed({ profileId }) {
             {profile.game && <span className="community-game-tag">{profile.game}</span>}
             {!profile.isDemo && profile.createdAt && <span>Joined {new Intl.DateTimeFormat("en-IN", { month: "short", year: "numeric" }).format(new Date(profile.createdAt))}</span>}
           </div>}
+          {profileId && profile && <PlayerFollowSummary profileId={profile.userId} viewer={user} isDemo={profile.isDemo} />}
+          {profileId && profile && !profile.isDemo && <div className="community-player-stats" aria-label="Player statistics">
+            <div><b>{profile.tournamentsPlayed}</b><span>Tournaments played</span></div>
+            <div><b>{profile.matchesPlayed}</b><span>Matches played</span></div>
+            <div><b>{profile.wins}</b><span>Wins</span></div>
+            <div><b>{profile.losses}</b><span>Losses</span></div>
+          </div>}
+          {profileId && profile && !profile.isDemo && <section className="community-player-achievements" aria-labelledby="community-player-achievements-title">
+            <h2 id="community-player-achievements-title">Achievements</h2>
+            {profile.achievements?.length
+              ? <ul>{profile.achievements.map((achievement, index) => <li key={achievement.id || `${achievement.name || achievement.title || "achievement"}-${index}`}>
+                <b>{achievement.name || achievement.title || achievement.value || "Achievement"}</b>
+                {(achievement.description || achievement.detail) && <span>{achievement.description || achievement.detail}</span>}
+              </li>)}</ul>
+              : <p>No achievements recorded yet.</p>}
+          </section>}
           {profilePosts.length
             ? profilePosts.map((post) => <CommunityPostCard
               key={post.postId}
@@ -357,7 +377,7 @@ function CommunityPostCard({ post, user, busy, canParticipate, onLike, onEdit, o
   const canReport = Boolean(user?.id && canParticipate && !ownPost);
   return <article className="community-post card" id={post.postId} data-community-post={post.postId}>
     <header className="community-post-header">
-      <Link className="community-author" to={`/community/profile/${encodeURIComponent(post.authorId)}`}>
+      <Link className="community-author" to={`/player/${encodeURIComponent(post.authorId)}`}>
         <Avatar name={post.authorDisplayName || post.authorUsername} />
         <span className="community-author-copy">
           <span><b>{post.authorDisplayName || post.authorUsername}</b>{post.isDemo && <em className="community-demo-label">DEMO ACCOUNT</em>}</span>
@@ -484,9 +504,9 @@ function CommunityComments({ post, user, canParticipate, onChanged, onNotice }) 
             const ownComment = comment.authorId === user?.id;
             const canRemove = ownComment || post.authorId === user?.id;
             return <article className="community-comment" key={comment.commentId}>
-              <Link to={`/community/profile/${encodeURIComponent(comment.authorId)}`}><Avatar name={comment.authorDisplayName || comment.authorUsername} className="community-avatar-small" /></Link>
+              <Link to={`/player/${encodeURIComponent(comment.authorId)}`}><Avatar name={comment.authorDisplayName || comment.authorUsername} className="community-avatar-small" /></Link>
               <div className="community-comment-main">
-                <div className="community-comment-byline"><Link to={`/community/profile/${encodeURIComponent(comment.authorId)}`}><b>{comment.authorDisplayName || comment.authorUsername}</b></Link><time dateTime={comment.createdAt}>{formatTime(comment.createdAt)}</time>{comment.updatedAt !== comment.createdAt && <span>Edited</span>}</div>
+                <div className="community-comment-byline"><Link to={`/player/${encodeURIComponent(comment.authorId)}`}><b>{comment.authorDisplayName || comment.authorUsername}</b></Link><time dateTime={comment.createdAt}>{formatTime(comment.createdAt)}</time>{comment.updatedAt !== comment.createdAt && <span>Edited</span>}</div>
                 {editing === comment.commentId
                   ? <><textarea className="community-comment-input" maxLength={COMMUNITY_MAX_COMMENT_LENGTH} value={editContent} onChange={(event) => setEditContent(event.target.value)} /><div className="community-comment-tools"><button type="button" disabled={busy} onClick={() => saveComment(comment.commentId)}>Save</button><button type="button" disabled={busy} onClick={() => setEditing(null)}>Cancel</button></div></>
                   : <p>{comment.content}</p>}

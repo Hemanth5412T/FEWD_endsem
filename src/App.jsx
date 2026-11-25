@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Navigate, Route, Routes, useLocation, useNavigationType } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useNavigationType, useParams } from "react-router-dom";
 import { Link } from "./components/TransitionLink.jsx";
 import { MainNav, SiteFooter } from "./components/MainLayout.jsx";
 import Home from "./pages/Home.jsx";
@@ -17,7 +17,7 @@ import { useAuth } from "./context/AuthContext.jsx";
 import { canUseAdmin, getInterfaceMode } from "./data/adminStore.js";
 
 const titles = {
-  "/": "Home", "/live": "Live", "/community": "Community", "/leaderboard": "Leaderboard", "/search-events": "Tournaments",
+  "/": "Home", "/live": "Live", "/community": "Community", "/player": "Player Profile", "/leaderboard": "Leaderboard", "/search-events": "Tournaments",
   "/profile": "Profile", "/activities": "Activities", "/login": "Login", "/register": "Register",
   "/admin": "Admin Dashboard",
 };
@@ -35,9 +35,15 @@ const navbarIndices = {
 };
 
 function navbarIndex(pathname) {
+  if (pathname.startsWith("/player/")) return navbarIndices["/community"];
   if (pathname.startsWith("/community/profile/")) return navbarIndices["/community"];
   if (pathname.startsWith("/tournament/")) return navbarIndices["/search-events"];
   return navbarIndices[pathname] ?? 0;
+}
+
+function LegacyCommunityProfileRedirect() {
+  const { userId } = useParams();
+  return <Navigate to={`/player/${encodeURIComponent(userId || "")}`} replace />;
 }
 
 function getTransitionDirections(sourcePath, destinationPath) {
@@ -61,11 +67,13 @@ function RouteContent({ location }) {
       <Route path="/" element={<Home />} />
       <Route path="/live" element={<Live />} />
       <Route path="/community" element={<Community />} />
-      <Route path="/community/profile/:userId" element={<Community />} />
+      <Route path="/player/:userId" element={<Community />} />
+      <Route path="/community/profile/:userId" element={<LegacyCommunityProfileRedirect />} />
       <Route path="/leaderboard" element={<Leaderboard />} />
       <Route path="/search-events" element={<SearchEvents />} />
       <Route path="/tournament/:id" element={<TournamentDetails />} />
       <Route path="/profile" element={<Profile />} />
+      <Route path="/friends" element={<Navigate to="/community" replace />} />
       <Route path="/activities" element={<Activities />} />
       <Route path="/admin" element={status === "loading" ? <main className="w"><p>Loading account…</p></main> : canAdmin ? <AdminDashboard /> : <Navigate to={user ? "/" : "/login"} replace />} />
       <Route path="/login" element={<AuthPage initialMode="login" />} />
@@ -117,8 +125,9 @@ function MotionRoutes() {
 
   useEffect(() => {
     const title = location.pathname.startsWith("/tournament/") ? "Tournament Details"
-      : location.pathname.startsWith("/community/profile/") ? "Player Community Profile"
-        : (titles[location.pathname] || "GAME ARENA");
+      : location.pathname.startsWith("/player/") ? "Player Profile"
+        : location.pathname.startsWith("/community/profile/") ? "Player Community Profile"
+          : (titles[location.pathname] || "GAME ARENA");
     document.title = `${title} | GAME ARENA`;
   }, [location.pathname]);
 

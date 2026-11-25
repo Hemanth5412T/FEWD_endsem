@@ -4,6 +4,7 @@ import {
   getAccountById,
   getCompletedMatchHistory,
   getCompletedTournamentHistory,
+  getPublicPlayerProfile,
   initializeAccountDatabase,
 } from "./accountStore.js";
 import { getRegistrationsForUser } from "./gameArenaData.js";
@@ -429,23 +430,9 @@ export async function listCommunityPosts({ filter = "all", userId = null, author
 
 export async function getPublicCommunityProfile(userId) {
   if (!userId) return null;
+  const player = await getPublicPlayerProfile(userId);
+  if (player) return { ...player, isDemo: false };
   const db = await openDatabase();
-  const accounts = db.transaction("accounts", "readonly").objectStore("accounts");
-  const account = await requestValue(accounts.get(userId));
-  if (account) {
-    if (account.status === "banned" || account.isActive === false) return null;
-    const displayName = displayNameFor(account);
-    return {
-      userId: account.id,
-      username: account.username,
-      displayName,
-      avatarInitials: initialsFor(displayName),
-      bio: String(account.bio || ""),
-      game: String(account.preferredGame || ""),
-      createdAt: account.createdAt || null,
-      isDemo: false,
-    };
-  }
   const posts = db.transaction(COMMUNITY_STORES.posts, "readonly").objectStore(COMMUNITY_STORES.posts);
   const authored = await requestValue(posts.index("authorId").getAll(IDBKeyRange.only(userId), 1));
   const demo = authored.find((post) => post.isDemo);
