@@ -8,6 +8,7 @@ import { canUseAdmin, getInterfaceMode, setInterfaceMode, validateAdminAccount }
 const navigation = [
   ["Home", "/"],
   ["Live", "/live"],
+  ["Community", "/community"],
   ["Leaderboard", "/leaderboard"],
   ["Tournaments", "/search-events"],
   ["Profile", "/profile"],
@@ -23,7 +24,7 @@ export function MainNav() {
   const [logoutError, setLogoutError] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const logoutStarted = useRef(false);
-  const current = pathname.startsWith("/tournament/") ? "/search-events" : pathname;
+  const current = pathname.startsWith("/community") ? "/community" : pathname.startsWith("/tournament/") ? "/search-events" : pathname;
   useEffect(() => { setMobileMenuOpen(false); }, [pathname]);
   const closeMenu = () => setMobileMenuOpen(false);
 
@@ -77,7 +78,7 @@ export function SiteFooter() {
           <div><Link className="brand" to="/"><img src={logo} alt="" width="40" height="40" />GAME ARENA</Link>
             <p style={{ marginTop: 12, maxWidth: "36ch" }}>Find tournaments, watch live matches and track your climb.</p>
           </div>
-          <ul><li><Link to="/">Home</Link></li><li><Link to="/live">Live</Link></li><li><Link to="/leaderboard">Leaderboard</Link></li></ul>
+          <ul><li><Link to="/">Home</Link></li><li><Link to="/live">Live</Link></li><li><Link to="/community">Community</Link></li><li><Link to="/leaderboard">Leaderboard</Link></li></ul>
           <ul><li><Link to="/search-events">Tournaments</Link></li><li><Link to="/profile">Profile</Link></li><li><Link to="/activities">Activities</Link></li><li><Link to="/register">Create account</Link></li></ul>
         </div>
         <small>Frontend prototype. All players, teams, scores and prizes are sample data.</small>

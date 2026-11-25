@@ -100,12 +100,7 @@
     min-height: 44px;
 }
 
-@media (max-width: 900px) {
-    .w {
-        width: calc(100% - 32px);
-        min-width: 0;
-    }
-
+@media (max-width: 1320px) {
     .nav { z-index: 100; }
     .nav .w {
         position: relative;
@@ -187,6 +182,13 @@
     .nav .nav-auth-item { padding: 5px 0 0; }
     .nav .nav-auth-button { width: 100%; min-height: 46px; }
     .nav .nav-auth-error { position: static; display: block; max-width: none; padding: 6px 12px; }
+}
+
+@media (max-width: 900px) {
+    .w {
+        width: calc(100% - 32px);
+        min-width: 0;
+    }
 
     h1 { font-size: clamp(2.35rem, 10vw, 4.25rem); overflow-wrap: anywhere; }
     h2 { font-size: clamp(1.8rem, 7vw, 2.5rem); }

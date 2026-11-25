@@ -1,7 +1,15 @@
 const DB_NAME = "gameArenaAccounts";
 const STORE = "accounts";
-export const ACCOUNT_DB_VERSION = 4;
+export const ACCOUNT_DB_VERSION = 6;
+const ACCOUNT_DATA_VERSION = 4;
 export const ADMIN_STORES = { tournaments: "managedTournaments", requests: "promotionRequests", audit: "adminAudit" };
+export const COMMUNITY_STORES = {
+  posts: "CommunityPosts",
+  reactions: "CommunityReactions",
+  comments: "CommunityComments",
+  reports: "CommunityReports",
+  moderation: "CommunityModeration",
+};
 const SESSION_KEY = "gameArena.authUserId";
 const ITERATIONS = 600_000;
 let databasePromise;
@@ -78,7 +86,46 @@ function openDatabase() {
         store.createIndex("emailNormalized", "emailNormalized", { unique: true });
       } else store = request.transaction.objectStore(STORE);
       for (const name of Object.values(ADMIN_STORES)) if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath: "id" });
-      if (event.oldVersion < ACCOUNT_DB_VERSION) {
+      if (!db.objectStoreNames.contains(COMMUNITY_STORES.posts)) {
+        const posts = db.createObjectStore(COMMUNITY_STORES.posts, { keyPath: "postId" });
+        posts.createIndex("authorId", "authorId");
+        posts.createIndex("createdAtPost", ["createdAt", "postId"]);
+        posts.createIndex("postType", "postType");
+        posts.createIndex("sourceEventId", "sourceEventId", { unique: true });
+      }
+      if (!db.objectStoreNames.contains(COMMUNITY_STORES.reactions)) {
+        const reactions = db.createObjectStore(COMMUNITY_STORES.reactions, { keyPath: "reactionId" });
+        reactions.createIndex("postId", "postId");
+        reactions.createIndex("userId", "userId");
+        reactions.createIndex("postUser", ["postId", "userId"], { unique: true });
+      }
+      if (!db.objectStoreNames.contains(COMMUNITY_STORES.comments)) {
+        const comments = db.createObjectStore(COMMUNITY_STORES.comments, { keyPath: "commentId" });
+        comments.createIndex("postId", "postId");
+        comments.createIndex("authorId", "authorId");
+        comments.createIndex("postCreatedAtId", ["postId", "createdAt", "commentId"]);
+        comments.createIndex("postAuthorContent", ["postId", "authorId", "content"]);
+      } else {
+        const comments = request.transaction.objectStore(COMMUNITY_STORES.comments);
+        if (!comments.indexNames.contains("postAuthorContent")) {
+          comments.createIndex("postAuthorContent", ["postId", "authorId", "content"]);
+        }
+      }
+      if (!db.objectStoreNames.contains(COMMUNITY_STORES.reports)) {
+        const reports = db.createObjectStore(COMMUNITY_STORES.reports, { keyPath: "reportId" });
+        reports.createIndex("postId", "postId");
+        reports.createIndex("reporterId", "reporterId");
+        reports.createIndex("postReporter", ["postId", "reporterId"], { unique: true });
+        reports.createIndex("createdAt", "createdAt");
+        reports.createIndex("statusCreatedAt", ["status", "createdAt"]);
+      }
+      if (!db.objectStoreNames.contains(COMMUNITY_STORES.moderation)) {
+        const moderation = db.createObjectStore(COMMUNITY_STORES.moderation, { keyPath: "moderationId" });
+        moderation.createIndex("postId", "postId");
+        moderation.createIndex("actorId", "actorId");
+        moderation.createIndex("createdAt", "createdAt");
+      }
+      if (event.oldVersion < ACCOUNT_DATA_VERSION) {
         const cursor = store.openCursor();
         cursor.onsuccess = () => {
           const row = cursor.result;
@@ -110,7 +157,14 @@ function openDatabase() {
         };
       }
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => {
+        db.close();
+        databasePromise = null;
+      };
+      resolve(db);
+    };
     request.onerror = () => reject(request.error || new Error("Could not open account storage."));
     request.onblocked = () => reject(new Error("Account storage is blocked by another browser tab."));
   }).catch((error) => { databasePromise = null; throw error; });

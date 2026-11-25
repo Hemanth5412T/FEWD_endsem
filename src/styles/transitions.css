@@ -10,7 +10,7 @@
   overflow: hidden;
 }
 
-.app-shell > .nav {
+.route-screen > .nav {
   flex: 0 0 auto;
   view-transition-name: app-nav;
 }

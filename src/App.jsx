@@ -5,6 +5,7 @@ import { Link } from "./components/TransitionLink.jsx";
 import { MainNav, SiteFooter } from "./components/MainLayout.jsx";
 import Home from "./pages/Home.jsx";
 import Live from "./pages/Live.jsx";
+import Community from "./pages/Community.jsx";
 import Leaderboard from "./pages/Leaderboard.jsx";
 import SearchEvents from "./pages/SearchEvents.jsx";
 import TournamentDetails from "./pages/TournamentDetails.jsx";
@@ -16,23 +17,25 @@ import { useAuth } from "./context/AuthContext.jsx";
 import { canUseAdmin, getInterfaceMode } from "./data/adminStore.js";
 
 const titles = {
-  "/": "Home", "/live": "Live", "/leaderboard": "Leaderboard", "/search-events": "Tournaments",
+  "/": "Home", "/live": "Live", "/community": "Community", "/leaderboard": "Leaderboard", "/search-events": "Tournaments",
   "/profile": "Profile", "/activities": "Activities", "/login": "Login", "/register": "Register",
   "/admin": "Admin Dashboard",
 };
 const navbarIndices = {
   "/": 0,
   "/live": 1,
-  "/leaderboard": 2,
-  "/search-events": 3,
-  "/profile": 4,
-  "/activities": 5,
+  "/community": 2,
+  "/leaderboard": 3,
+  "/search-events": 4,
+  "/profile": 5,
+  "/activities": 6,
   "/login": -1,
   "/register": -1,
-  "/admin": 6,
+  "/admin": 7,
 };
 
 function navbarIndex(pathname) {
+  if (pathname.startsWith("/community/profile/")) return navbarIndices["/community"];
   if (pathname.startsWith("/tournament/")) return navbarIndices["/search-events"];
   return navbarIndices[pathname] ?? 0;
 }
@@ -57,6 +60,8 @@ function RouteContent({ location }) {
     <Routes location={location}>
       <Route path="/" element={<Home />} />
       <Route path="/live" element={<Live />} />
+      <Route path="/community" element={<Community />} />
+      <Route path="/community/profile/:userId" element={<Community />} />
       <Route path="/leaderboard" element={<Leaderboard />} />
       <Route path="/search-events" element={<SearchEvents />} />
       <Route path="/tournament/:id" element={<TournamentDetails />} />
@@ -111,7 +116,9 @@ function MotionRoutes() {
   }, []);
 
   useEffect(() => {
-    const title = location.pathname.startsWith("/tournament/") ? "Tournament Details" : (titles[location.pathname] || "GAME ARENA");
+    const title = location.pathname.startsWith("/tournament/") ? "Tournament Details"
+      : location.pathname.startsWith("/community/profile/") ? "Player Community Profile"
+        : (titles[location.pathname] || "GAME ARENA");
     document.title = `${title} | GAME ARENA`;
   }, [location.pathname]);
 
@@ -125,9 +132,10 @@ function MotionRoutes() {
     ? { duration: 0.12, ease: "easeOut" }
     : { duration: mobileViewport ? 0.38 : 0.5, ease: [0.77, 0, 0.175, 1] };
 
+  const screenContent = <>{!authMode && <MainNav />}{routeElements}</>;
+
   return (
     <div className={`app-shell${authMode ? " auth-app-shell" : ""}`}>
-      {!authMode && <MainNav />}
       <div className={`route-transition-stage${authMode ? " auth-transition-stage" : ""}`}>
         {supportsViewTransitions ? (
           <div
@@ -135,7 +143,7 @@ function MotionRoutes() {
             className={`route-screen page-transition-surface${authMode ? " auth-route-screen" : ""}`}
             onScroll={(event) => scrollPositions.current.set(location.key, event.currentTarget.scrollTop)}
           >
-            {routeElements}
+            {screenContent}
           </div>
         ) : (
           <AnimatePresence mode="wait" initial={false}>
@@ -150,7 +158,7 @@ function MotionRoutes() {
               transition={fallbackTransition}
               onScroll={(event) => scrollPositions.current.set(location.key, event.currentTarget.scrollTop)}
             >
-              {routeElements}
+              {screenContent}
             </motion.div>
           </AnimatePresence>
         )}

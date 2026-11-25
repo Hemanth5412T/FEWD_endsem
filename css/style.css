@@ -79,8 +79,7 @@ section {
 }
 
 .nav {
-    position: sticky;
-    top: 0;
+    position: relative;
     z-index: 50;
     background: var(--n);
     color: var(--b)
@@ -91,6 +90,7 @@ section {
     align-items: center;
     justify-content: space-between;
     gap: 20px;
+    width: min(1320px, 100% - 48px);
     min-height: 68px
 }
 

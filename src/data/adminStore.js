@@ -9,7 +9,11 @@ const nowIso = () => new Date().toISOString();
 function openDb() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB, ACCOUNT_DB_VERSION);
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
     request.onerror = () => reject(request.error || new Error("Admin storage unavailable."));
   });
 }
