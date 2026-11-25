@@ -1,6 +1,7 @@
 import { Link } from "../components/TransitionLink.jsx";
 import { useEffect, useState } from "react";
 import { getRegistrationsForUser, isUnregistrationOpen, subscribeToData, unregisterTournament } from "../data/gameArenaData.js";
+import { getCompletedMatchHistory, getCompletedTournamentHistory } from "../data/accountStore.js";
 import { getTournamentById } from "../data/tournaments.js";
 import { useAuth } from "../context/AuthContext.jsx";
 
@@ -35,24 +36,53 @@ export default function Activities() {
     setPendingUnregistration(null);
     setUnregistrationFeedback("This tournament registration could not be removed. Please refresh and try again.");
   }
-  const monthMatches = ["2026-11-01T10:42:00+05:30", "2026-10-28T21:05:00+05:30"]
-    .map((date, index) => ({ date: new Date(date), won: index === 0 }))
-    .filter(({ date }) => date.getFullYear() === new Date().getFullYear() && date.getMonth() === new Date().getMonth());
+  const isThisMonth = (value) => {
+    const date = new Date(value);
+    const current = new Date();
+    return !Number.isNaN(date.getTime()) && date.getFullYear() === current.getFullYear() && date.getMonth() === current.getMonth();
+  };
+  const matchHistory = getCompletedMatchHistory(user);
+  const monthMatches = matchHistory.filter((match) => isThisMonth(match.completedAt || match.playedAt || match.at || match.createdAt));
+  const achievements = Array.isArray(user?.achievements) ? user.achievements : [];
+  const tournamentHistory = getCompletedTournamentHistory(user);
   const stats = {
     matches: monthMatches.length,
-    wins: monthMatches.filter((match) => match.won).length,
+    wins: monthMatches.filter((match) => match.result === "win").length,
     tournaments: registrations.length,
-    badges: 1,
+    badges: achievements.filter((achievement) => isThisMonth(achievement.unlockedAt || achievement.createdAt || achievement.at)).length,
   };
   const pendingCanUnregister = pendingUnregistration
     ? isUnregistrationOpen(pendingUnregistration.tournamentStart, now)
     : false;
-  const timeline = [
-    { at: "2026-11-01T10:42:00+05:30", type: "match", result: "win", title: "Won vs Orion Gaming", detail: "Valorant · 13–9 on Ascent" },
-    { at: "2026-10-28T21:05:00+05:30", type: "match", result: "loss", title: "Lost vs Titan Squad", detail: "Valorant · 10–13 on Bind" },
-    { at: "2026-10-25T18:30:00+05:30", type: "badge", result: "win", title: "Badge unlocked: Clutch Master", detail: "Achievement" },
-    { at: "2026-10-20T23:20:00+05:30", type: "tournament-result", result: "win", title: `Champions of ${getTournamentById("winter-clash-valorant")?.name || "Winter Clash Valorant"}`, detail: "Tournament result · ₹40,000 won" },
-    { at: "2026-10-12T19:00:00+05:30", type: "tournament-result", result: "win", title: `Placed 4th in ${getTournamentById("mobile-mayhem-bgmi")?.name || "Mobile Mayhem BGMI"}`, detail: "Tournament result · ₹15,000 won" },
+  const activityItems = [
+    ...(Array.isArray(user?.activities) ? user.activities : [])
+      .filter((activity) => activity.userId === user?.id)
+      .map((activity) => ({
+        ...activity,
+        at: activity.at || activity.createdAt || activity.date,
+        type: activity.type || "activity",
+        title: activity.title || activity.name || activity.value || "Player activity",
+        detail: activity.detail || activity.description || "",
+      })),
+    ...matchHistory.map((match) => ({
+      at: match.completedAt || match.playedAt || match.at || match.createdAt,
+      type: "match",
+      result: match.result,
+      title: match.title || `${match.result === "win" ? "Won" : match.result === "loss" ? "Lost" : "Drew"} vs ${match.opponent || "opponent"}`,
+      detail: [match.game, match.score, match.map].filter(Boolean).join(" · "),
+    })),
+    ...achievements.map((achievement) => ({
+      at: achievement.unlockedAt || achievement.createdAt || achievement.at,
+      type: "badge",
+      title: `Achievement unlocked: ${achievement.name || achievement.title || achievement.value || "Achievement"}`,
+      detail: achievement.description || achievement.detail || "",
+    })),
+    ...tournamentHistory.map((entry) => ({
+      at: entry.completedAt || entry.at,
+      type: "tournament-result",
+      title: `${entry.result} · ${entry.name || getTournamentById(entry.tournamentId)?.name || "Tournament"}`,
+      detail: "Tournament result",
+    })),
     ...registrations.map((registration) => {
       const tournament = getTournamentById(registration.tournamentId);
       return { at: registration.registeredAt, type: "tournament-registration", result: "win", title: "REGISTERED FOR TOURNAMENT", detail: `${tournament?.game || registration.game || "Tournament"} · ${tournament?.name || registration.name} · Registration successful` };
@@ -166,74 +196,15 @@ export default function Activities() {
           </div>
         </section>
         <div className="tlw" id="activity-timeline">
-          <div className="ti rv" data-activity-type="match" data-match-result="win" data-activity-at="2026-11-01T10:42:00+05:30">
-            <div className="card pad">
-              <time>
-                {"1 Nov 2026 · 10:42 AM"}
-              </time>
-              <h3>
-                {"Won vs Orion Gaming"}
-              </h3>
-              <p className="win">
-                {"Valorant · 13–9 on Ascent"}
-              </p>
-            </div>
-          </div>
-          <div className="ti rv" data-activity-type="match" data-match-result="loss" data-activity-at="2026-10-28T21:05:00+05:30">
-            <div className="card pad">
-              <time>
-                {"28 Oct 2026 · 9:05 PM"}
-              </time>
-              <h3>
-                {"Lost vs Titan Squad"}
-              </h3>
-              <p className="loss">
-                {"Valorant · 10–13 on Bind"}
-              </p>
-            </div>
-          </div>
-          <div className="ti rv" data-activity-type="badge" data-activity-at="2026-10-25T18:30:00+05:30">
-            <div className="card pad">
-              <time>
-                {"25 Oct 2026 · 6:30 PM"}
-              </time>
-              <h3>
-                {"Badge unlocked: Clutch Master"}
-              </h3>
-              <p className="win">
-                {"Achievement"}
-              </p>
-            </div>
-          </div>
-          <div className="ti rv" data-activity-type="tournament-result" data-activity-at="2026-10-20T23:20:00+05:30">
-            <div className="card pad">
-              <time>
-                {"20 Oct 2026 · 11:20 PM"}
-              </time>
-              <h3>
-                {"Champions of Winter Clash Valorant"}
-              </h3>
-              <p className="win">
-                {"Tournament result · ₹40,000 won"}
-              </p>
-            </div>
-          </div>
-          <div className="ti rv" data-activity-type="tournament-result" data-activity-at="2026-10-12T19:00:00+05:30">
-            <div className="card pad">
-              <time>
-                {"12 Oct 2026 · 7:00 PM"}
-              </time>
-              <h3>
-                {"Placed 4th in Mobile Mayhem BGMI"}
-              </h3>
-              <p className="win">
-                {"Tournament result · ₹15,000 won"}
-              </p>
-            </div>
-          </div>
-          {timeline.filter((item) => item.type === "tournament-registration").map((item) => <div className="ti rv registered-timeline-entry" data-activity-type={item.type} data-activity-at={item.at} key={item.at}>
-            <div className="card pad"><time dateTime={item.at}>{formatDate(item.at)}</time><h3>{item.title}</h3><p className="win">{item.detail}</p></div>
-          </div>)}
+          {activityItems.length > 0
+            ? activityItems.map((item, index) => <div className="ti rv" data-activity-type={item.type} data-activity-at={item.at} key={item.id || `${item.type}-${item.at || item.title}-${index}`}>
+              <div className="card pad">
+                <time dateTime={item.at || undefined}>{item.at ? formatDate(item.at) : "Date unavailable"}</time>
+                <h3>{item.title}</h3>
+                {item.detail && <p className={item.result === "loss" ? "loss" : "win"}>{item.detail}</p>}
+              </div>
+            </div>)
+            : <p className="card pad">No activities yet. Your tournament registrations and gaming milestones will appear here.</p>}
         </div>
       </section>
     </div>

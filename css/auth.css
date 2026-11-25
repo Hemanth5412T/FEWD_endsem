@@ -5,6 +5,8 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     min-height: 100vh;
+    min-height: 100dvh;
+    align-items: stretch;
     overflow-x: clip;
     background: var(--b)
 }
@@ -33,7 +35,6 @@
 .au > main {
     grid-row: 1;
     min-width: 0;
-    min-height: 0;
     transition: transform var(--auth-duration) var(--auth-ease);
     will-change: transform
 }
@@ -172,7 +173,7 @@
 }
 
 .auth-form {
-    position: absolute;
+    position: relative;
     grid-area: 1 / 1;
     z-index: 1;
     visibility: hidden;
@@ -398,6 +399,7 @@
         grid-template-columns: minmax(0, 1fr);
         grid-template-rows: auto 1fr;
         min-height: 100vh;
+        min-height: 100dvh;
         overflow-x: hidden
     }
     .au > aside,
@@ -422,6 +424,7 @@
     .au .auth-promo { gap: 8px; justify-content: center; min-height: 0; }
     .au > aside h1 { font-size: clamp(1.8rem, 6vw, 2.7rem); line-height: .95; }
     .au .auth-promo small { font-size: .82rem; }
+    .auth-form:not(.is-active) { position: absolute; }
     .au.auth-login-to-home > aside { transform: translateY(-100vh) !important }
     .au.auth-login-to-home > main { transform: translateY(100vh) !important }
     .auth-form { transform: translateY(16px) }

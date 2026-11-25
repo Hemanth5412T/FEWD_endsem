@@ -1,5 +1,6 @@
 import { Link } from "../components/TransitionLink.jsx";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getCompletedMatchHistory, getCompletedTournamentHistory, getTournamentsPlayed } from "../data/accountStore.js";
 import { getTournamentById } from "../data/tournaments.js";
 import { useAuth } from "../context/AuthContext.jsx";
 
@@ -9,9 +10,26 @@ export default function Profile() {
   const [profileMessage, setProfileMessage] = useState("");
   const editButtonRef = useRef(null);
   const closeEditor = useCallback(() => { setEditing(false); editButtonRef.current?.focus(); }, []);
-  const username = user?.username || "ShadowKira";
+  const username = user?.username || "Player";
   const initials = username.slice(0, 2).toUpperCase();
   const joined = user?.createdAt ? new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric" }).format(new Date(user.createdAt)) : "Date unavailable";
+  const matchesPlayed = user?.matchesPlayed ?? 0;
+  const wins = user?.wins ?? 0;
+  const losses = user?.losses ?? 0;
+  const winRate = matchesPlayed ? `${((wins / matchesPlayed) * 100).toFixed(1)}%` : "0.0%";
+  const completedMatches = getCompletedMatchHistory(user);
+  const tournamentHistory = getCompletedTournamentHistory(user);
+  const tournamentsPlayed = getTournamentsPlayed(user);
+  const achievements = Array.isArray(user?.achievements) ? user.achievements : [];
+  const gameStatistics = new Map();
+  for (const match of completedMatches) {
+    const game = String(match.game || "").trim();
+    if (!game) continue;
+    const statistics = gameStatistics.get(game) || { matches: 0, wins: 0 };
+    statistics.matches += 1;
+    if (match.result === "win") statistics.wins += 1;
+    gameStatistics.set(game, statistics);
+  }
   return (
     <main>
     <div className="w">
@@ -28,7 +46,7 @@ export default function Profile() {
               <b>
                 {user?.playerId || "Player ID unavailable"}
               </b>
-              {user ? " · GAME ARENA player" : " · Entry fragger · Nova Esports"}
+                {user ? " · GAME ARENA player" : " · Log in to view your player profile"}
             </p>
             <p style={{margin: "8px 0 14px", maxWidth: "56ch"}}>
               {user?.bio || "No bio added yet."}
@@ -45,31 +63,31 @@ export default function Profile() {
         <div className="g profile-stats">
           <div className="st lt rv profile-stat-card">
             <b>
-              {"248"}
+              {matchesPlayed}
             </b>
             {"Total matches"}
           </div>
           <div className="st lt rv profile-stat-card">
             <b>
-              {"163"}
+              {wins}
             </b>
             {"Wins"}
           </div>
           <div className="st lt rv profile-stat-card">
             <b>
-              {"85"}
+              {losses}
             </b>
             {"Losses"}
           </div>
           <div className="st lt rv profile-stat-card">
             <b>
-              {"65.7%"}
+              {winRate}
             </b>
             {"Win rate"}
           </div>
           <div className="st lt rv profile-stat-card">
             <b>
-              {"18"}
+              {tournamentsPlayed}
             </b>
             {"Tournaments played"}
           </div>
@@ -101,63 +119,14 @@ export default function Profile() {
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td>
-                  <b>
-                    {"Valorant"}
-                  </b>
-                </td>
-                <td>
-                  {"142"}
-                </td>
-                <td>
-                  {"98"}
-                </td>
-                <td>
-                  {"69.0%"}
-                </td>
-                <td>
-                  {"#4"}
-                </td>
-              </tr>
-              <tr>
-                <td>
-                  <b>
-                    {"BGMI"}
-                  </b>
-                </td>
-                <td>
-                  {"71"}
-                </td>
-                <td>
-                  {"42"}
-                </td>
-                <td>
-                  {"59.2%"}
-                </td>
-                <td>
-                  {"#11"}
-                </td>
-              </tr>
-              <tr>
-                <td>
-                  <b>
-                    {"Counter-Strike 2"}
-                  </b>
-                </td>
-                <td>
-                  {"35"}
-                </td>
-                <td>
-                  {"23"}
-                </td>
-                <td>
-                  {"65.7%"}
-                </td>
-                <td>
-                  {"#9"}
-                </td>
-              </tr>
+              {[...gameStatistics].map(([game, statistics]) => <tr key={game}>
+                <td><b>{game}</b></td>
+                <td>{statistics.matches}</td>
+                <td>{statistics.wins}</td>
+                <td>{((statistics.wins / statistics.matches) * 100).toFixed(1)}%</td>
+                <td>—</td>
+              </tr>)}
+              {gameStatistics.size === 0 && <tr><td colSpan="5">No completed match statistics yet.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -168,71 +137,28 @@ export default function Profile() {
             <h2 className="rv">
               {"Recent tournaments"}
             </h2>
-            <div className="card pad rv">
-              <h3>
-              {getTournamentById("winter-clash-valorant")?.name}
-              </h3>
-              <p>
-                {"Champions · ₹40,000 won"}
-              </p>
-            </div>
-            <div className="card pad rv">
-              <h3>
-              {getTournamentById("mobile-mayhem-bgmi")?.name}
-              </h3>
-              <p>
-                {"4th place · ₹15,000 won"}
-              </p>
-            </div>
-            <div className="card pad rv">
-              <h3>
-              {getTournamentById("inferno-invitational")?.name}
-              </h3>
-              <p>
-                {"Quarterfinals in progress"}
-              </p>
-            </div>
+            {tournamentHistory.length > 0
+              ? tournamentHistory.slice(0, 3).map((entry) => {
+                const tournament = getTournamentById(entry.tournamentId);
+                return <div className="card pad rv" key={entry.tournamentId}>
+                  <h3>{entry.name || tournament?.name || "Tournament"}</h3>
+                  <p>{String(entry.result)}{entry.prize ? ` · ₹${Number(entry.prize).toLocaleString("en-IN")} won` : ""}</p>
+                </div>;
+              })
+              : <div className="card pad rv">No tournament history yet.</div>}
           </div>
           <div>
             <h2 className="rv">
               {"Match history"}
             </h2>
-            <div className="card pad rv">
-              <span className="res win">
-                {"W 13–9"}
-              </span>
-              <b>
-                {"vs Orion Gaming"}
-              </b>
-              <br />
-              <small>
-                {"Valorant · Ascent"}
-              </small>
-            </div>
-            <div className="card pad rv">
-              <span className="res loss">
-                {"L 10–13"}
-              </span>
-              <b>
-                {"vs Titan Squad"}
-              </b>
-              <br />
-              <small>
-                {"Valorant · Bind"}
-              </small>
-            </div>
-            <div className="card pad rv">
-              <span className="res win">
-                {"W 13–11"}
-              </span>
-              <b>
-                {"vs Crimson Fang"}
-              </b>
-              <br />
-              <small>
-                {"CS2 · Inferno"}
-              </small>
-            </div>
+            {completedMatches.length > 0
+              ? completedMatches.slice(0, 3).map((match, index) => <div className="card pad rv" key={match.id || `${match.game || "match"}-${index}`}>
+                <span className={`res ${match.result}`}>{match.result === "win" ? "W" : match.result === "loss" ? "L" : "D"}{match.score ? ` ${match.score}` : ""}</span>
+                <b>{match.opponent ? `vs ${match.opponent}` : "Completed match"}</b>
+                <br />
+                <small>{[match.game, match.map].filter(Boolean).join(" · ")}</small>
+              </div>)
+              : <div className="card pad rv">No completed matches yet.</div>}
           </div>
         </div>
       </section>
@@ -241,48 +167,15 @@ export default function Profile() {
           {"Achievements"}
         </h2>
         <div className="g">
-          <div className="card badge rv">
-            <i>
-              {"C"}
-            </i>
-            <div>
-              <b>
-                {"Clutch Master"}
-              </b>
-              <br />
-              <small>
-                {"Won 25 rounds 1v3 or worse"}
-              </small>
-            </div>
-          </div>
-          <div className="card badge rv">
-            <i>
-              {"W"}
-            </i>
-            <div>
-              <b>
-                {"Winter Champion"}
-              </b>
-              <br />
-              <small>
-                {"Won Winter Clash Valorant"}
-              </small>
-            </div>
-          </div>
-          <div className="card badge rv">
-            <i>
-              {"50"}
-            </i>
-            <div>
-              <b>
-                {"50 Wins Streak Club"}
-              </b>
-              <br />
-              <small>
-                {"Reached 50 wins in Valorant"}
-              </small>
-            </div>
-          </div>
+          {achievements.length > 0
+            ? achievements.map((achievement, index) => {
+              const name = achievement.name || achievement.title || achievement.value || "Achievement";
+              return <div className="card badge rv" key={achievement.id || `${name}-${index}`}>
+                <i>{achievement.icon || name.slice(0, 1).toUpperCase()}</i>
+                <div><b>{name}</b><br /><small>{achievement.description || achievement.detail || ""}</small></div>
+              </div>;
+            })
+            : <p className="card pad">No achievements yet. Participate in tournaments and showcase your victories here.</p>}
         </div>
       </section>
     </div>

@@ -1,4 +1,4 @@
-import { ADMIN_STORES, getStoredAccounts, updateStoredAccount, createAccount, initializeAccountDatabase, repairSeedAccountCredentials } from "./accountStore.js";
+import { ACCOUNT_DB_VERSION, ADMIN_STORES, getStoredAccounts, updateStoredAccount, createAccount, initializeAccountDatabase, repairSeedAccountCredentials } from "./accountStore.js";
 import { MASTER_ADMIN_SEED } from "./adminSeed.js";
 
 const DB = "gameArenaAccounts";
@@ -8,7 +8,7 @@ const nowIso = () => new Date().toISOString();
 
 function openDb() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB, 2);
+    const request = indexedDB.open(DB, ACCOUNT_DB_VERSION);
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error || new Error("Admin storage unavailable."));
   });

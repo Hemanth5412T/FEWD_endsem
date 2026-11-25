@@ -1,5 +1,6 @@
 const DB_NAME = "gameArenaAccounts";
 const STORE = "accounts";
+export const ACCOUNT_DB_VERSION = 4;
 export const ADMIN_STORES = { tournaments: "managedTournaments", requests: "promotionRequests", audit: "adminAudit" };
 const SESSION_KEY = "gameArena.authUserId";
 const ITERATIONS = 600_000;
@@ -8,15 +9,66 @@ let databasePromise;
 function normalize(value) { return String(value || "").trim().toLowerCase(); }
 function toBase64(bytes) { return btoa(String.fromCharCode(...new Uint8Array(bytes))); }
 function fromBase64(value) { return Uint8Array.from(atob(value), (char) => char.charCodeAt(0)); }
+export function findAccountByIdentifier(accounts, identifier) {
+  const value = normalize(identifier);
+  const matches = new Map((Array.isArray(accounts) ? accounts : [])
+    .filter((account) => normalize(account.username) === value || normalize(account.email) === value)
+    .map((account) => [account.id, account]));
+  return value && matches.size === 1 ? matches.values().next().value : null;
+}
+function normalizeOwnedRecords(records, userId) {
+  if (!Array.isArray(records)) return [];
+  return records
+    .filter((record) => record !== null && record !== undefined
+      && (typeof record !== "object" || !record.userId || record.userId === userId))
+    .map((record) => typeof record === "object"
+      ? record.userId ? record : { ...record, userId }
+      : { userId, value: record });
+}
+export function getCompletedMatchHistory(account) {
+  return normalizeOwnedRecords(account?.matchHistory, account?.id)
+    .filter((match) => String(match?.status || "").trim().toLowerCase() === "completed"
+      && ["win", "loss", "draw"].includes(String(match?.result || "").trim().toLowerCase()))
+    .map((match) => ({ ...match, result: String(match.result).trim().toLowerCase() }));
+}
+export function getPlayerStatistics(account) {
+  const completedResults = getCompletedMatchHistory(account).map((match) => match.result);
+  const wins = completedResults.filter((result) => result === "win").length;
+  const losses = completedResults.filter((result) => result === "loss").length;
+  const draws = completedResults.filter((result) => result === "draw").length;
+  const matchesPlayed = wins + losses + draws;
+  return { matchesPlayed, wins, losses, draws, winRate: matchesPlayed ? Math.round((wins / matchesPlayed) * 1000) / 10 : 0 };
+}
+export function getCompletedTournamentHistory(account) {
+  return normalizeOwnedRecords(account?.tournamentHistory, account?.id)
+    .filter((entry) => String(entry?.status || entry?.tournamentStatus || "").trim().toLowerCase() === "completed"
+      && Boolean(entry?.tournamentId)
+      && entry?.result !== undefined && entry?.result !== null && String(entry.result).trim() !== "");
+}
+export function getTournamentsPlayed(account) {
+  return new Set(getCompletedTournamentHistory(account).map((entry) => entry.tournamentId)).size;
+}
 function safeAccount(account) {
   if (!account) return null;
-  const { passwordHash, passwordSalt, usernameNormalized, emailNormalized, ...safe } = account;
-  return { ...safe, playerId: account.playerId || `GA-${String(account.id).replaceAll("-", "").slice(0, 8).toUpperCase()}` };
+  const normalized = {
+    ...account,
+    activities: normalizeOwnedRecords(account.activities, account.id),
+    achievements: normalizeOwnedRecords(account.achievements, account.id),
+    matchHistory: normalizeOwnedRecords(account.matchHistory, account.id),
+    tournamentHistory: normalizeOwnedRecords(account.tournamentHistory, account.id),
+  };
+  const { passwordHash, passwordSalt, usernameNormalized, emailNormalized, ...safe } = normalized;
+  return {
+    ...safe,
+    ...getPlayerStatistics(normalized),
+    tournamentsPlayed: getTournamentsPlayed(normalized),
+    playerId: account.playerId || `GA-${String(account.id).replaceAll("-", "").slice(0, 8).toUpperCase()}`,
+  };
 }
 function openDatabase() {
   if (!globalThis.indexedDB || !globalThis.crypto?.subtle) return Promise.reject(new Error("Secure browser storage is unavailable."));
   if (!databasePromise) databasePromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 2);
+    const request = indexedDB.open(DB_NAME, ACCOUNT_DB_VERSION);
     request.onupgradeneeded = (event) => {
       const db = request.result;
       let store;
@@ -26,13 +78,34 @@ function openDatabase() {
         store.createIndex("emailNormalized", "emailNormalized", { unique: true });
       } else store = request.transaction.objectStore(STORE);
       for (const name of Object.values(ADMIN_STORES)) if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath: "id" });
-      if (event.oldVersion < 2) {
+      if (event.oldVersion < ACCOUNT_DB_VERSION) {
         const cursor = store.openCursor();
         cursor.onsuccess = () => {
           const row = cursor.result;
           if (!row) return;
           const account = row.value;
-          row.update({ ...account, role: account.role || "player", status: account.status || (account.isActive === false ? "banned" : "active"), statusReason: account.statusReason || null, statusUpdatedAt: account.statusUpdatedAt || null, statusUpdatedBy: account.statusUpdatedBy || null });
+          row.update({
+            ...account,
+            ...(event.oldVersion < 2 ? {
+              role: account.role || "player",
+              status: account.status || (account.isActive === false ? "banned" : "active"),
+              statusReason: account.statusReason || null,
+              statusUpdatedAt: account.statusUpdatedAt || null,
+              statusUpdatedBy: account.statusUpdatedBy || null,
+            } : {}),
+            activities: normalizeOwnedRecords(account.activities, account.id),
+            achievements: normalizeOwnedRecords(account.achievements, account.id),
+            matchHistory: normalizeOwnedRecords(account.matchHistory, account.id),
+            tournamentHistory: normalizeOwnedRecords(account.tournamentHistory, account.id),
+            ...getPlayerStatistics({
+              ...account,
+              matchHistory: normalizeOwnedRecords(account.matchHistory, account.id),
+            }),
+            tournamentsPlayed: getTournamentsPlayed({
+              ...account,
+              tournamentHistory: normalizeOwnedRecords(account.tournamentHistory, account.id),
+            }),
+          });
           row.continue();
         };
       }
@@ -51,6 +124,18 @@ async function getByIndex(indexName, value) {
 async function getStoredAccountById(id) {
   const db = await openDatabase();
   return requestValue(db.transaction(STORE, "readonly").objectStore(STORE).get(id));
+}
+async function getStoredAccountByIdentifier(value) {
+  const db = await openDatabase();
+  const accounts = await requestValue(db.transaction(STORE, "readonly").objectStore(STORE).getAll());
+  return findAccountByIdentifier(accounts, value);
+}
+async function hasStoredAccountWithNormalizedField(indexName, fieldName, value) {
+  const indexed = await getByIndex(indexName, value);
+  if (indexed && normalize(indexed[fieldName]) === value) return true;
+  const db = await openDatabase();
+  const accounts = await requestValue(db.transaction(STORE, "readonly").objectStore(STORE).getAll());
+  return accounts.some((account) => normalize(account[fieldName]) === value);
 }
 async function hashPassword(password, salt) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
@@ -73,13 +158,16 @@ export async function createAccount({ username, email, password }) {
   if (!validEmail(normalizedEmail)) return { ok: false, fields: { email: "Enter a valid email address." } };
   if (typeof password !== "string" || password.length < 8 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) return { ok: false, fields: { password: "Use at least 8 characters with uppercase, lowercase, and a number." } };
   try {
-    const [existingUsername, existingEmail] = await Promise.all([getByIndex("usernameNormalized", normalizedUsername), getByIndex("emailNormalized", normalizedEmail)]);
+    const [existingUsername, existingEmail] = await Promise.all([
+      hasStoredAccountWithNormalizedField("usernameNormalized", "username", normalizedUsername),
+      hasStoredAccountWithNormalizedField("emailNormalized", "email", normalizedEmail),
+    ]);
     if (existingUsername || existingEmail) return { ok: false, fields: { ...(existingUsername ? { username: "That username is already registered." } : {}), ...(existingEmail ? { email: "That email is already registered." } : {}) }, message: "Please correct the highlighted fields." };
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const passwordHash = await hashPassword(password, salt);
     const now = new Date().toISOString();
     const id = crypto.randomUUID();
-    const account = { id, playerId: `GA-${id.replaceAll("-", "").slice(0, 8).toUpperCase()}`, username: cleanUsername, email: normalizedEmail, usernameNormalized: normalizedUsername, emailNormalized: normalizedEmail, passwordHash: toBase64(passwordHash), passwordSalt: toBase64(salt), bio: "", role: "player", status: "active", statusReason: null, statusUpdatedAt: null, statusUpdatedBy: null, createdAt: now, updatedAt: now, isActive: true };
+    const account = { id, playerId: `GA-${id.replaceAll("-", "").slice(0, 8).toUpperCase()}`, username: cleanUsername, email: normalizedEmail, usernameNormalized: normalizedUsername, emailNormalized: normalizedEmail, passwordHash: toBase64(passwordHash), passwordSalt: toBase64(salt), bio: "", matchesPlayed: 0, wins: 0, losses: 0, draws: 0, winRate: 0, tournamentsPlayed: 0, achievements: [], activities: [], matchHistory: [], tournamentHistory: [], role: "player", status: "active", statusReason: null, statusUpdatedAt: null, statusUpdatedBy: null, createdAt: now, updatedAt: now, isActive: true };
     const db = await openDatabase();
     await requestValue(db.transaction(STORE, "readwrite").objectStore(STORE).add(account));
     return { ok: true, user: safeAccount(account) };
@@ -92,7 +180,7 @@ export async function createAccount({ username, email, password }) {
 export async function authenticateAccount(identifier, password) {
   try {
     const value = normalize(identifier);
-    const account = await getByIndex("usernameNormalized", value) || (value.includes("@") ? await getByIndex("emailNormalized", value) : null);
+    const account = value ? await getStoredAccountByIdentifier(value) : null;
     if (account?.status === "banned" || account?.isActive === false) return { ok: false, banned: true, message: "This account is banned and cannot log in." };
     if (!account) {
       await hashPassword(String(password || ""), new Uint8Array(16));
